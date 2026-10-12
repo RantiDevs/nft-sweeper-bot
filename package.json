@@ -4,12 +4,19 @@
   "description": "Detects trending free NFT mints on Robinhood Chain and mints them",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "wallets:new": "tsx src/cli/new-wallets.ts",
+    "balances": "tsx src/cli/balances.ts",
+    "fund": "tsx src/cli/fund.ts",
+    "recover": "tsx src/cli/recover.ts",
+    "collect": "tsx src/cli/collect.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -17,6 +24,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "ganache": "^7.9.2",
+    "solc": "^0.8.26",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"

@@ -1,5 +1,5 @@
 import { type Address, type Hex } from "viem";
-import { BLOCKED_SELECTORS, selectorOf } from "./calldata.js";
+import { BLOCKED_SELECTORS, retargetCalldata, selectorOf } from "./calldata.js";
 
 /** One observed transaction that minted tokens of `collection` (from == 0x0). */
 export interface MintObservation {
@@ -16,8 +16,13 @@ export interface MintObservation {
 
 export interface HotMint {
   collection: Address;
-  /** The most recent free mint tx; this is the template we replay. */
-  template: MintObservation;
+  /**
+   * Candidate txs to replay, best first. Each is the newest tx of a distinct
+   * call "pattern" (target + calldata with the minter's address masked out),
+   * ranked by how many distinct wallets used that pattern. The crowd's most
+   * common way of minting is the one most likely to work for us too.
+   */
+  templates: MintObservation[];
   uniqueMinters: number;
   mintTxs: number;
 }
@@ -26,6 +31,17 @@ export interface DetectorOptions {
   windowBlocks: number;
   minUniqueMinters: number;
   minMintTxs: number;
+  /** Lower thresholds for specific collections (e.g. allowlisted snipes). */
+  thresholdsFor?: (collection: Address) => { minUniqueMinters: number; minMintTxs: number } | undefined;
+  /** Max candidate templates returned per collection. */
+  maxTemplates?: number;
+}
+
+const MASK = "0x000000000000000000000000000000000000dEaD" as Address;
+
+/** Normalised call shape: identical for two wallets doing the "same" mint. */
+export function patternKey(o: MintObservation): string {
+  return `${o.target}:${retargetCalldata(o.input, o.minter, MASK)}`;
 }
 
 /**
@@ -36,35 +52,58 @@ export interface DetectorOptions {
  * so paid mints with a few free allowlist claims are not mistaken for free ones.
  */
 export class MintDetector {
-  private byCollection = new Map<Address, MintObservation[]>();
+  private byCollection = new Map<Address, Map<Hex, MintObservation>>();
 
   constructor(private opts: DetectorOptions) {}
 
   add(obs: MintObservation): void {
-    const arr = this.byCollection.get(obs.collection) ?? [];
-    if (!arr.some((o) => o.txHash === obs.txHash)) arr.push(obs);
-    this.byCollection.set(obs.collection, arr);
+    let m = this.byCollection.get(obs.collection);
+    if (!m) this.byCollection.set(obs.collection, (m = new Map()));
+    m.set(obs.txHash, obs);
+  }
+
+  forget(collection: Address): void {
+    this.byCollection.delete(collection);
   }
 
   prune(head: bigint): void {
     const cutoff = head - BigInt(this.opts.windowBlocks);
-    for (const [c, arr] of this.byCollection) {
-      const kept = arr.filter((o) => o.blockNumber > cutoff);
-      if (kept.length) this.byCollection.set(c, kept);
-      else this.byCollection.delete(c);
+    for (const [c, m] of this.byCollection) {
+      for (const [h, o] of m) if (o.blockNumber <= cutoff) m.delete(h);
+      if (m.size === 0) this.byCollection.delete(c);
     }
+  }
+
+  size(): number {
+    return this.byCollection.size;
   }
 
   hot(): HotMint[] {
     const out: HotMint[] = [];
-    for (const [collection, arr] of this.byCollection) {
+    for (const [collection, m] of this.byCollection) {
+      const arr = [...m.values()];
       if (arr.some((o) => o.value > 0n)) continue;
-      const replayable = arr.filter((o) => !BLOCKED_SELECTORS.has(selectorOf(o.input)));
-      if (replayable.length === 0) continue;
+      const t = this.opts.thresholdsFor?.(collection) ?? this.opts;
       const uniqueMinters = new Set(arr.map((o) => o.minter)).size;
-      if (uniqueMinters < this.opts.minUniqueMinters || arr.length < this.opts.minMintTxs) continue;
-      const template = replayable.reduce((a, b) => (b.blockNumber > a.blockNumber ? b : a));
-      out.push({ collection, template, uniqueMinters, mintTxs: arr.length });
+      if (uniqueMinters < t.minUniqueMinters || arr.length < t.minMintTxs) continue;
+
+      const patterns = new Map<string, { minters: Set<Address>; latest: MintObservation }>();
+      for (const o of arr) {
+        if (o.input.length < 10 || BLOCKED_SELECTORS.has(selectorOf(o.input))) continue;
+        const k = patternKey(o);
+        const p = patterns.get(k);
+        if (!p) patterns.set(k, { minters: new Set([o.minter]), latest: o });
+        else {
+          p.minters.add(o.minter);
+          if (o.blockNumber > p.latest.blockNumber) p.latest = o;
+        }
+      }
+      if (patterns.size === 0) continue;
+      const templates = [...patterns.values()]
+        .sort((a, b) => b.minters.size - a.minters.size || Number(b.latest.blockNumber - a.latest.blockNumber))
+        .slice(0, this.opts.maxTemplates ?? 3)
+        .map((p) => p.latest);
+      out.push({ collection, templates, uniqueMinters, mintTxs: arr.length });
     }
     return out.sort((a, b) => b.uniqueMinters - a.uniqueMinters);
   }
