@@ -1,0 +1,21 @@
+# Weakness patterns. One search pattern per line.
+# Placeholders: {niche} {location} and optionally {platform}.
+# Text after " #" is a label stored with the query (shown in exports).
+
+"© 2014" "{niche}" "{location}"  # outdated_copyright
+"© 2015" "{niche}" "{location}"  # outdated_copyright
+"© 2016" "{niche}" "{location}"  # outdated_copyright
+"© 2017" "{niche}" "{location}"  # outdated_copyright
+"© 2018" "{niche}" "{location}"  # outdated_copyright
+"best viewed in" "{niche}" "{location}"  # old_browser_notice
+"under construction" "{niche}" "{location}"  # under_construction
+"coming soon" "{niche}" "{location}"  # under_construction
+"powered by Wix" "{niche}" "{location}"  # free_builder_branding
+"powered by Weebly" "{niche}" "{location}"  # free_builder_branding
+"created with Jimdo" "{niche}" "{location}"  # free_builder_branding
+"proudly powered by WordPress" "{niche}" "{location}"  # free_builder_branding
+"call to book" "{niche}" "{location}" -"book online"  # no_booking
+"{niche}" "{location}" "fill out the form" -"book online"  # contact_form_only
+"{niche}" "{location}" "contact us" "@gmail.com"  # free_email
+"{niche}" "{location}" "call us" "whatsapp" -"contact form"  # phone_only
+"{niche}" "{location}" "request a quote"  # no_pricing

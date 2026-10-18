@@ -1,0 +1,3 @@
+# Businesses whose main web presence is a social or link-in-bio page.
+site:facebook.com "{niche}" "{location}" "book now"  # facebook_only
+site:instagram.com "{niche}" "{location}" "DM to book"  # instagram_only

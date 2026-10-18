@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lead-miner"
+version = "0.1.0"
+description = "Find small businesses with weak websites, enrich them politely, and draft (never send) outreach emails."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "click>=8.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+draft = ["anthropic>=1.0"]
+dev = ["pytest>=8", "anthropic>=1.0"]
+
+[project.scripts]
+lead-miner = "lead_miner.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["lead_miner*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
