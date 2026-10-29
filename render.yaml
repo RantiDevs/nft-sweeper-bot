@@ -1,0 +1,52 @@
+# Render "Blueprint": Dashboard -> New -> Blueprint -> pick this repository.
+# Secrets are asked for at creation time (sync: false) and are never stored in this file.
+services:
+  - type: web
+    name: nft-sweeper-bot
+    runtime: node
+    plan: free
+    region: oregon            # choose the region closest to your RPC provider
+    buildCommand: npm ci --include=dev   # tsx (which runs the TypeScript) is a dev dependency
+    startCommand: npm run tg
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384   # the free instance has 512 MB of memory
+      - key: DATA_DIR
+        value: data
+      - key: CHAIN_ID
+        value: "4663"
+      - key: DRY_RUN
+        value: "true"
+      - key: OPEN_REGISTRATION
+        value: "false"
+      # Calmer on a small free server: a check every 300 ms instead of 100 ms.
+      - key: POLL_INTERVAL_MS
+        value: "300"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: MASTER_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: OPENSEA_API_KEY
+        sync: false
+      - key: ACTION_RPC_URLS
+        sync: false
+      - key: MAX_WALLETS_PER_USER
+        value: "8"
+      - key: TOTAL_GAS_BUDGET_ETH
+        value: "0.002"
+      - key: CEILING_TOTAL_GAS_BUDGET_ETH
+        value: "0.002"
+      - key: MAX_GAS_COST_ETH
+        value: "0.00002"
+      - key: CEILING_MAX_GAS_COST_ETH
+        value: "0.00002"

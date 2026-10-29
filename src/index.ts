@@ -1,16 +1,18 @@
 import { formatEther } from "viem";
 import { loadConfig } from "./config.js";
 import { Engine } from "./engine.js";
-import { makeClients } from "./rpc.js";
+import { assertChain, makeClients } from "./rpc.js";
 import { State } from "./state.js";
 import { log, mapLimit } from "./util.js";
 import { loadAccounts, makeWallets } from "./wallets.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  const { chain, transport, publicClient } = makeClients(cfg);
+  const { chain, transport, publicClient, watchClient } = makeClients(cfg);
   const wallets = makeWallets(loadAccounts(cfg), chain, transport);
   const state = new State(cfg.stateFile);
+  await assertChain(publicClient, cfg.chainId);
+  if (watchClient !== publicClient) await assertChain(watchClient, cfg.chainId);
 
   log(
     `Robinhood Chain free-mint sweeper | chain ${chain.id} | rpc endpoints ${Math.max(1, cfg.rpcUrls.length)} | ` +
@@ -28,7 +30,7 @@ async function main(): Promise<void> {
       (low.length ? ` (${low.map((w) => w.label).join(",")}) — run \`npm run fund\`` : ""));
   }
 
-  const engine = new Engine(publicClient, wallets, cfg, state);
+  const engine = new Engine(publicClient, wallets, cfg, state, watchClient);
   let signals = 0;
   const shutdown = async () => {
     if (++signals > 1) process.exit(1);

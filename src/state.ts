@@ -19,9 +19,11 @@ interface StateData {
   holdings: Record<string, Holding[]>;
   /** total wei spent on gas by all our wallets (decimal string) */
   gasSpentWei: string;
+  /** collection -> on-chain reverts that still cost gas */
+  reverts: Record<string, number>;
 }
 
-const empty = (): StateData => ({ minted: {}, bad: {}, holdings: {}, gasSpentWei: "0" });
+const empty = (): StateData => ({ minted: {}, bad: {}, holdings: {}, gasSpentWei: "0", reverts: {} });
 
 /**
  * Persistent bot state. Writes are atomic (write temp file, rename) so a crash
@@ -68,6 +70,14 @@ export class State {
   markBad(collection: Address, reason: string): void {
     this.data.bad[collection] = reason;
     this.save();
+  }
+
+  /** Counts an on-chain revert for the collection and returns the new total. */
+  recordRevert(collection: Address): number {
+    const n = (this.data.reverts[collection] ?? 0) + 1;
+    this.data.reverts[collection] = n;
+    this.save();
+    return n;
   }
 
   gasSpent(): bigint {

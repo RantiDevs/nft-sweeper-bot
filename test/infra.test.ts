@@ -73,4 +73,11 @@ describe("config & wallets", () => {
     const cfg = loadConfig({ RPC_URLS: "https://a.example, https://b.example\nhttps://c.example" });
     expect(cfg.rpcUrls).toHaveLength(3);
   });
+
+  it("defaults the base-fee ceiling only on Robinhood Chain", () => {
+    expect(loadConfig({}).maxBaseFeeWei).toBe(50_000_000n); // 0.05 gwei
+    expect(loadConfig({ CHAIN_ID: "1" }).maxBaseFeeWei).toBeUndefined();
+    expect(loadConfig({ MAX_BASE_FEE_GWEI: "off" }).maxBaseFeeWei).toBeUndefined();
+    expect(loadConfig({ CHAIN_ID: "1", MAX_BASE_FEE_GWEI: "30" }).maxBaseFeeWei).toBe(30_000_000_000n);
+  });
 });

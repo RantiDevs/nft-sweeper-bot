@@ -6,6 +6,7 @@ export const TRANSFER_SINGLE_TOPIC =
   "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
 export const TRANSFER_BATCH_TOPIC =
   "0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb" as const;
+export const ZERO_ADDRESS_STR = "0x0000000000000000000000000000000000000000" as const;
 export const ZERO_TOPIC = `0x${"0".repeat(64)}` as const;
 
 export type Standard = "erc721" | "erc1155";

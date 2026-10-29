@@ -38,7 +38,12 @@ export function isRevert(e: unknown): boolean {
 
 export function errMsg(e: unknown): string {
   const msg = e instanceof Error ? ((e as { shortMessage?: string }).shortMessage ?? e.message) : String(e);
-  return msg.split("\n")[0];
+  const first = msg.split("\n")[0];
+  // viem's short message for a failed request is just "An unknown RPC error occurred." The useful part
+  // (HTTP 429, timeout, bad gateway) is in `status` / `details`, so show it.
+  const x = e as { status?: number; details?: string } | undefined;
+  const extra = [x?.status ? `HTTP ${x.status}` : "", x?.details && !first.includes(x.details) ? x.details.split("\n")[0].slice(0, 120) : ""].filter(Boolean).join(", ");
+  return extra ? `${first} [${extra}]` : first;
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -54,4 +59,23 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
     timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms}ms`)), ms);
   });
   return Promise.race([p, t]).finally(() => clearTimeout(timer));
+}
+
+/** Counting semaphore: caps how many async operations run at once across callers. */
+export class Semaphore {
+  private waiters: Array<() => void> = [];
+  private active = 0;
+
+  constructor(private max: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.max) await new Promise<void>((r) => this.waiters.push(r));
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      this.waiters.shift()?.();
+    }
+  }
 }

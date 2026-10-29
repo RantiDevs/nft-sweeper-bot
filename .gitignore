@@ -1,6 +1,19 @@
 node_modules/
 dist/
+.cache/
+
+# Secrets and private data: never commit any of these
 .env
-state.json
+.env.*
+!.env.example
+data/
 wallets*.txt
+state.json
 state.json.tmp
+*.bak
+*.bak2
+*.bak3
+
+# throwaway probe scripts
+_*.mjs
+_*.mts

@@ -16,10 +16,20 @@
     "balances": "tsx src/cli/balances.ts",
     "fund": "tsx src/cli/fund.ts",
     "recover": "tsx src/cli/recover.ts",
-    "collect": "tsx src/cli/collect.ts"
+    "collect": "tsx src/cli/collect.ts",
+    "tg": "tsx src/tg/index.ts",
+    "tg:genkey": "tsx src/tg/genkey.ts",
+    "plan": "tsx src/cli/plan.ts",
+    "doctor": "tsx src/cli/doctor.ts",
+    "inspect": "tsx src/cli/inspect.ts",
+    "snipe": "tsx src/cli/snipe.ts",
+    "test:e2e": "vitest run -c vitest.e2e.config.ts && vitest run -c vitest.tg.config.ts",
+    "test:all": "npm test && npm run test:e2e"
   },
   "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
     "dotenv": "^16.4.5",
+    "grammy": "^1.46.0",
     "viem": "^2.57.4"
   },
   "devDependencies": {

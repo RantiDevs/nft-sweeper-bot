@@ -1,4 +1,4 @@
-import { type Address, type Hex } from "viem";
+﻿import { type Address, type Hex } from "viem";
 import { BLOCKED_SELECTORS, retargetCalldata, selectorOf } from "./calldata.js";
 
 /** One observed transaction that minted tokens of `collection` (from == 0x0). */
@@ -25,6 +25,8 @@ export interface HotMint {
   templates: MintObservation[];
   uniqueMinters: number;
   mintTxs: number;
+  /** Wall-clock ms when the bot first saw this collection mint (for latency reporting). */
+  firstSeenAt?: number;
 }
 
 export interface DetectorOptions {
@@ -53,10 +55,12 @@ export function patternKey(o: MintObservation): string {
  */
 export class MintDetector {
   private byCollection = new Map<Address, Map<Hex, MintObservation>>();
+  private firstSeen = new Map<Address, number>();
 
   constructor(private opts: DetectorOptions) {}
 
   add(obs: MintObservation): void {
+    if (!this.firstSeen.has(obs.collection)) this.firstSeen.set(obs.collection, Date.now());
     let m = this.byCollection.get(obs.collection);
     if (!m) this.byCollection.set(obs.collection, (m = new Map()));
     m.set(obs.txHash, obs);
@@ -70,7 +74,10 @@ export class MintDetector {
     const cutoff = head - BigInt(this.opts.windowBlocks);
     for (const [c, m] of this.byCollection) {
       for (const [h, o] of m) if (o.blockNumber <= cutoff) m.delete(h);
-      if (m.size === 0) this.byCollection.delete(c);
+      if (m.size === 0) {
+        this.byCollection.delete(c);
+        this.firstSeen.delete(c);
+      }
     }
   }
 
@@ -78,12 +85,17 @@ export class MintDetector {
     return this.byCollection.size;
   }
 
-  hot(): HotMint[] {
+  /**
+   * Free-mint collections meeting the thresholds. `floor` overrides the
+   * constructor thresholds, so several consumers (e.g. Telegram users with
+   * different settings) can share one detector and filter the result further.
+   */
+  hot(floor?: { minUniqueMinters: number; minMintTxs: number }): HotMint[] {
     const out: HotMint[] = [];
     for (const [collection, m] of this.byCollection) {
       const arr = [...m.values()];
       if (arr.some((o) => o.value > 0n)) continue;
-      const t = this.opts.thresholdsFor?.(collection) ?? this.opts;
+      const t = floor ?? this.opts.thresholdsFor?.(collection) ?? this.opts;
       const uniqueMinters = new Set(arr.map((o) => o.minter)).size;
       if (uniqueMinters < t.minUniqueMinters || arr.length < t.minMintTxs) continue;
 
@@ -103,7 +115,7 @@ export class MintDetector {
         .sort((a, b) => b.minters.size - a.minters.size || Number(b.latest.blockNumber - a.latest.blockNumber))
         .slice(0, this.opts.maxTemplates ?? 3)
         .map((p) => p.latest);
-      out.push({ collection, templates, uniqueMinters, mintTxs: arr.length });
+      out.push({ collection, templates, uniqueMinters, mintTxs: arr.length, firstSeenAt: this.firstSeen.get(collection) });
     }
     return out.sort((a, b) => b.uniqueMinters - a.uniqueMinters);
   }

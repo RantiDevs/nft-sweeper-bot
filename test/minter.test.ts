@@ -165,10 +165,64 @@ describe("FeeOracle", () => {
       getBlock: vi.fn().mockResolvedValue({ baseFeePerGas: 100n }),
       estimateMaxPriorityFeePerGas: vi.fn().mockResolvedValue(5n),
     };
-    const o = new FeeOracle(client as never, { multiplier: 2, minPriorityFeeWei: 0n });
-    expect(await o.get()).toEqual({ maxFeePerGas: 205n, maxPriorityFeePerGas: 5n });
+    const o = new FeeOracle(client as never, { multiplier: 2, minPriorityFeeWei: 0n, useSuggestedTip: true });
+    expect(await o.get()).toEqual({ maxFeePerGas: 205n, maxPriorityFeePerGas: 5n, baseFeePerGas: 100n });
     const b = await o.bump({ maxFeePerGas: 205n, maxPriorityFeePerGas: 5n });
     expect(b.maxFeePerGas).toBeGreaterThanOrEqual(266n);
     expect(b.maxPriorityFeePerGas).toBeGreaterThanOrEqual(6n);
+  });
+
+  it("pays no tip by default, since a tip only costs money on first-come-first-served chains", async () => {
+    const { FeeOracle } = await import("../src/fees.js");
+    const client = {
+      getBlock: vi.fn().mockResolvedValue({ baseFeePerGas: 100n }),
+      estimateMaxPriorityFeePerGas: vi.fn().mockResolvedValue(5n),
+    };
+    const o = new FeeOracle(client as never, { multiplier: 2, minPriorityFeeWei: 0n });
+    expect(await o.get()).toMatchObject({ maxFeePerGas: 200n, maxPriorityFeePerGas: 0n });
+    expect(client.estimateMaxPriorityFeePerGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("gas savings and loss prevention", () => {
+  const second = { ...template, txHash: `0x${"02".repeat(32)}` as Hex, input: "0x4e71d92d" as Hex };
+
+  it("simulates every candidate when none is proven and sends the cheapest", async () => {
+    const { pc, wallet, sendTransaction, ctx } = setup({});
+    pc.estimateGas.mockImplementation(async ({ data }: { data: Hex }) => (data === "0x4e71d92d" ? 60_000n : 90_000n));
+    await mintFor({ ...hot, templates: [template, second] }, wallet, ctx);
+    expect(sendTransaction.mock.calls[0][0].data).toBe("0x4e71d92d");
+    expect(sendTransaction.mock.calls[0][0].gas).toBe(75_000n);
+  });
+
+  it("waits out base-fee spikes above MAX_BASE_FEE_GWEI without simulating or sending", async () => {
+    const { pc, wallet, sendTransaction, ctx } = setup({ MAX_BASE_FEE_GWEI: "0.001" });
+    ctx.fees = { get: async () => ({ maxFeePerGas: 4_000_000n, maxPriorityFeePerGas: 0n, baseFeePerGas: 2_000_000n }), bump: async (p: unknown) => p } as unknown as FeeOracle;
+    expect(await mintFor(hot, wallet, ctx)).toMatchObject({ status: "skipped", reason: expect.stringMatching(/base fee/) });
+    expect(pc.estimateGas).not.toHaveBeenCalled();
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks a collection after repeated on-chain reverts so later wallets stop paying", async () => {
+    const { pc, wallet, state, sendTransaction, ctx } = setup({ MAX_MINTS_PER_COLLECTION: "5" });
+    pc.waitForTransactionReceipt.mockResolvedValue({ status: "reverted", gasUsed: 50_000n, effectiveGasPrice: 1_000n, logs: [] });
+    expect((await mintFor(hot, wallet, ctx)).status).toBe("failed");
+    expect(state.isBad(C)).toBe(false);
+    expect((await mintFor(hot, wallet, ctx)).status).toBe("failed");
+    expect(state.isBad(C)).toBe(true);
+    expect(sendTransaction).toHaveBeenCalledTimes(2);
+    expect(await mintFor(hot, wallet, ctx)).toMatchObject({ status: "skipped", reason: "collection marked bad" });
+    expect(sendTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-checks the blocklist right before sending", async () => {
+    const { pc, wallet, state, sendTransaction, ctx } = setup({});
+    // Another wallet marks the collection bad while this one is still simulating.
+    pc.estimateGas.mockImplementation(async () => {
+      state.markBad(C, "trap");
+      return 100_000n;
+    });
+    expect(await mintFor(hot, wallet, ctx)).toMatchObject({ status: "skipped", reason: "collection marked bad" });
+    expect(sendTransaction).not.toHaveBeenCalled();
   });
 });
