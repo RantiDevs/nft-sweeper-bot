@@ -80,3 +80,9 @@ Your 8 wallets currently live only on your PC. To bring them along, run the bot 
 - **Back up `MASTER_KEY`** somewhere that is not Render or Supabase. Without it the stored wallets cannot be decrypted.
 - If Supabase is unreachable at startup the bot **refuses to start** instead of risking overwriting your data with an empty folder. Render will keep retrying.
 - Rotate any key you have pasted into a chat (Telegram token via @BotFather `/revoke`, Alchemy, OpenSea).
+
+## Radar and bridge (added later)
+
+- **Radar.** Runs inside the bot every `RADAR_INTERVAL_MIN` minutes and messages the admins when a free public mint passes its checks (not sold out on-chain, test mint works, priced on OpenSea, enough time left). Its bookmarks are in `data/radar.json`, which is mirrored to Supabase like everything else. On a free Render instance (0.1 CPU) the first pass over 20+ chains can take several minutes; set `RADAR=off` if it slows minting.
+- **Bridge.** `/bridge 8453 99901 0.002` quotes; add `yes` to send and `spread` to split over all wallets. It uses wallet w01 as the payer, so w01 must hold the native coin on the source chain. Limits are `BRIDGE_*` in `.env.example`. The daily total is kept in `data/bridge-ledger.json`.
+- **What the radar cannot see:** allowlist stages, other mint platforms (only OpenSea SeaDrop is on by default), and chains whose free public RPC refuses log queries (Arbitrum, Optimism, BNB, Avalanche). Add a better RPC per chain in `src/radar.ts`.

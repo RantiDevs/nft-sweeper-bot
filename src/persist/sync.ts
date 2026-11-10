@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { safeRename } from "../util.js";
 import { dirname, join } from "node:path";
 import { errMsg, log, sleep } from "../util.js";
 import type { SupabaseKV } from "./supabase.js";
@@ -75,7 +76,7 @@ export class DataSync {
         mkdirSync(dirname(abs), { recursive: true });
         const tmp = `${abs}.tmp`;
         writeFileSync(tmp, JSON.stringify(r.value, null, 2), { mode: 0o600 });
-        renameSync(tmp, abs);
+        safeRename(tmp, abs);
         downloaded++;
       }
     }

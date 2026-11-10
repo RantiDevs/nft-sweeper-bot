@@ -23,6 +23,8 @@
     "doctor": "tsx src/cli/doctor.ts",
     "inspect": "tsx src/cli/inspect.ts",
     "snipe": "tsx src/cli/snipe.ts",
+    "radar": "tsx src/cli/radar.ts",
+    "bridge": "tsx src/cli/bridge.ts",
     "test:e2e": "vitest run -c vitest.e2e.config.ts && vitest run -c vitest.tg.config.ts",
     "test:all": "npm test && npm run test:e2e"
   },

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { safeRename } from "./util.js";
 import { type Address } from "viem";
 import type { Standard } from "./logs.js";
 
@@ -92,6 +93,6 @@ export class State {
   private save(): void {
     const tmp = `${this.file}.tmp`;
     writeFileSync(tmp, JSON.stringify(this.data, null, 2));
-    renameSync(tmp, this.file);
+    safeRename(tmp, this.file);
   }
 }

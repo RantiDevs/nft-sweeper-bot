@@ -17,3 +17,6 @@ state.json.tmp
 # throwaway probe scripts
 _*.mjs
 _*.mts
+
+check-out.txt
+radar-out.txt

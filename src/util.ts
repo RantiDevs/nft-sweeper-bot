@@ -1,3 +1,28 @@
+import { renameSync, copyFileSync, unlinkSync } from "node:fs";
+
+/**
+ * Atomic-ish file replace that survives Windows. There, renaming over a file that an antivirus scanner or OneDrive
+ * has open fails with EPERM/EBUSY for a few milliseconds; a bare renameSync would then lose the save. Retry briefly,
+ * and as a last resort copy over the target.
+ */
+export function safeRename(from: string, to: string): void {
+  for (let i = 0; i < 8; i++) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (e: any) {
+      if (e?.code !== "EPERM" && e?.code !== "EBUSY" && e?.code !== "EACCES") throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15 * (i + 1));
+    }
+  }
+  copyFileSync(from, to);
+  try {
+    unlinkSync(from);
+  } catch {
+    /* the temp file is harmless */
+  }
+}
+
 /** Runs `fn` over `items` with at most `limit` in flight; results keep input order. */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);

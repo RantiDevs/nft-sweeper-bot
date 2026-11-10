@@ -10,6 +10,7 @@ import { loadTgConfig, usersFile } from "./config.js";
 import { registerHandlers } from "./handlers.js";
 import { Hub } from "./hub.js";
 import { Notifier } from "./notify.js";
+import { RadarService } from "./radar-service.js";
 import { UserStore } from "./store.js";
 
 async function main(): Promise<void> {
@@ -82,7 +83,20 @@ async function main(): Promise<void> {
   hubRef0 = hub;
   notifierRef = notifier;
   hub.loadAll();
-  registerHandlers(bot, { tg, hub, store, notifier });
+  const radar =
+    process.env.RADAR === "off"
+      ? undefined
+      : new RadarService({
+          dataDir: tg.dataDir,
+          intervalMs: Number(process.env.RADAR_INTERVAL_MIN ?? 10) * 60_000,
+          windowSec: Number(process.env.RADAR_WINDOW_HOURS ?? 3) * 3600,
+          lookbackHours: Number(process.env.RADAR_LOOKBACK_HOURS ?? 6),
+          openseaKey: process.env.OPENSEA_API_KEY,
+          platforms: process.env.RADAR_PLATFORMS ? (process.env.RADAR_PLATFORMS.split(",").map((x) => x.trim()) as ("seadrop" | "thirdweb")[]) : undefined,
+          rpcOverrides: { [tg.base.chainId]: tg.base.rpcUrls },
+          notify: (t) => notifier.admins(t),
+        });
+  registerHandlers(bot, { tg, hub, store, notifier, radar });
 
   let stopping = false;
   const shutdown = async () => {
@@ -90,6 +104,7 @@ async function main(): Promise<void> {
     stopping = true;
     log("shutting down: waiting for in-flight mints (Ctrl-C again to force)");
     await bot.stop().catch(() => {});
+    radar?.stop();
     await hub.stop();
     await notifier.flush();
     // Last save to Supabase, then let go of the run lock so the next copy can start at once.
@@ -114,6 +129,7 @@ async function main(): Promise<void> {
     { command: "settings", description: "View limits" },
     { command: "nfts", description: "Your minted NFTs" },
     { command: "collect", description: "Move NFTs to your vault" },
+    { command: "radar", description: "Free mints worth a look" },
     { command: "help", description: "All commands" },
   ]).catch((e) => log("setMyCommands failed:", e));
 
@@ -121,6 +137,7 @@ async function main(): Promise<void> {
   phase = "running";
   void bot.start({ onStart: (me) => log(`Telegram bot @${me.username} online`) });
   notifier.admins("🟢 Sweeper bot started.");
+  radar?.start();
   await hub.start();
 }
 

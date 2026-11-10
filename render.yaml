@@ -41,7 +41,7 @@ services:
       - key: ACTION_RPC_URLS
         sync: false
       - key: MAX_WALLETS_PER_USER
-        value: "8"
+        value: "14"
       - key: TOTAL_GAS_BUDGET_ETH
         value: "0.002"
       - key: CEILING_TOTAL_GAS_BUDGET_ETH

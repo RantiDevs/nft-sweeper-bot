@@ -8,6 +8,9 @@ import { errMsg, log } from "../util.js";
 import type { TgConfig } from "./config.js";
 import type { Hub } from "./hub.js";
 import { chunk, esc, short, type Notifier } from "./notify.js";
+import type { RadarService } from "./radar-service.js";
+import { executeBridge, planBridge, relayChains, spreadNative } from "../bridge.js";
+import { privateKeyToAccount } from "viem/accounts";
 import type { UserRecord, UserSettings, UserStore } from "./store.js";
 
 export interface BotDeps {
@@ -15,6 +18,7 @@ export interface BotDeps {
   hub: Hub;
   store: UserStore;
   notifier: Notifier;
+  radar?: RadarService;
 }
 
 interface Pending {
@@ -45,9 +49,11 @@ const HELP = [
   "/tiers <code>hold:15,25:10,12.5:25,5:50</code> · <code>/set ethprice 3000</code> · <code>/set fee 5</code>",
   "/recover <code>0x…</code> – send leftover ETH out · /export – show keys",
   "/notify <code>on|off</code>",
+  "<b>Radar</b>",
+  "/radar – free public mints worth a look right now (<code>/radar now</code> scans again)",
 ].join("\n");
 
-const ADMIN_HELP = "\n<b>Admin</b>\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
+const ADMIN_HELP = "\n<b>Admin</b>\n/bridge <code>from to amount [spread] [yes]</code> – move the native coin between chains (quote only unless yes)\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
 
 function parseAddress(s: string | undefined): Address | undefined {
   return s && isAddress(s, { strict: false }) ? getAddress(s) : undefined;
@@ -63,7 +69,7 @@ function intIn(s: string, lo: number, hi: number): number | undefined {
 }
 
 export function registerHandlers(bot: Bot, d: BotDeps): void {
-  const { tg, hub, store, notifier } = d;
+  const { tg, hub, store, notifier, radar } = d;
   const pending = new Map<number, Pending>();
   const lastSeen = new Map<number, number>();
 
@@ -183,6 +189,64 @@ export function registerHandlers(bot: Bot, d: BotDeps): void {
     if (u.wallets.length === 0) return say(ctx, "No wallets yet. Try <code>/newwallets 5</code>.");
     await sayLong(ctx, ["Send gas ETH on <b>Robinhood Chain (4663)</b> to any of these:", ...u.wallets.map((w, i) => `w${String(i + 1).padStart(2, "0")} <code>${w.address}</code>`)].join("\n"));
   });
+
+  // ── Radar & bridge ──────────────────────────────────────────────────────
+  cmd("radar", async (ctx, _u, args) => {
+    if (!radar) return say(ctx, "The radar is switched off (RADAR=off).");
+    if (args[0] === "now") {
+      await say(ctx, "Scanning now… this can take a few minutes the first time.");
+      await radar.pass().catch((e) => say(ctx, `Scan failed: ${esc(errMsg(e).slice(0, 200))}`));
+    }
+    await sayLong(ctx, radar.summary());
+  });
+
+  const bridgeCaps = () => ({
+    maxUsdPerBridge: Number(process.env.BRIDGE_MAX_USD_PER_BRIDGE ?? 15),
+    maxUsdPerDay: Number(process.env.BRIDGE_MAX_USD_PER_DAY ?? 15),
+    maxFeePct: Number(process.env.BRIDGE_MAX_FEE_PCT ?? 8),
+    maxFeeUsd: Number(process.env.BRIDGE_MAX_FEE_USD ?? 0.05),
+    ledgerFile: `${tg.dataDir}/bridge-ledger.json`,
+  });
+
+  cmd(
+    "bridge",
+    async (ctx, u, args) => {
+      const [fromS, toS, amtS, ...rest] = args;
+      const from = Number(fromS);
+      const to = Number(toS);
+      if (!from || !to || !amtS || !/^\d+(\.\d{1,18})?$/.test(amtS)) {
+        return say(ctx, "Usage: <code>/bridge 8453 99901 0.002</code> (from-chain, to-chain, amount of the FROM chain's coin). Add <code>spread</code> to split it over all your wallets, and <code>yes</code> to really send. Without <code>yes</code> you only get a quote.");
+      }
+      const keys = hub.exportKeys(u.id);
+      if (keys.length === 0) return say(ctx, "No wallets yet.");
+      const payer = privateKeyToAccount(keys[0].key as `0x${string}`);
+      const own = keys.map((k) => k.address);
+      const req = { fromChainId: from, toChainId: to, amountWei: parseEther(amtS), sender: payer.address, recipient: payer.address, ownWallets: own, ...bridgeCaps() };
+      try {
+        const chains = await relayChains();
+        const fc = chains.find((c) => c.id === from);
+        const tc = chains.find((c) => c.id === to);
+        const plan = await planBridge(req);
+        const lines = [
+          `🌉 <b>${amtS} ${fc?.currency.symbol} on ${esc(fc?.name ?? String(from))} → ${tc?.currency.symbol} on ${esc(tc?.name ?? String(to))}</b>`,
+          `Paying wallet: w01 <code>${payer.address}</code> (it must hold the coin on the source chain)`,
+          `You send $${plan.amountUsd.toFixed(2)} · total fee ≈ $${plan.feeUsd.toFixed(3)} · you receive ≈ ${plan.receiveEstimate} ${plan.receiveSymbol}`,
+          "All safety checks passed (native coin only, Relay's own deposit contract, your own wallet as recipient, caps).",
+        ];
+        if (!rest.includes("yes")) return say(ctx, [...lines, "", "Quote only. Repeat the command with <code>yes</code> to send."].join("\n"));
+        const res = await executeBridge(req, plan, payer);
+        lines.push(`Sent <code>${short(res.hash)}</code> · Relay status: <b>${esc(res.status)}</b>`);
+        if (res.status === "success" && rest.includes("spread")) {
+          const sent = await spreadNative(to, payer, own);
+          lines.push(`Split over ${sent.length} other wallet(s), ${formatEther(sent[0]?.wei ?? 0n)} ${tc?.currency.symbol} each.`);
+        } else if (rest.includes("spread")) lines.push("Not split yet: the bridge has not completed. Check /wallets and try again.");
+        return say(ctx, lines.join("\n"));
+      } catch (e) {
+        return say(ctx, `🛑 Bridge refused or failed: ${esc(errMsg(e).slice(0, 300))}`);
+      }
+    },
+    { admin: true },
+  );
 
   // ── Status & settings ───────────────────────────────────────────────────
   /** An ETH amount as dollars (plus ETH), when the price is known. */

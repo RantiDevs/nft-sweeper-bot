@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { safeRename } from "../util.js";
 import { dirname } from "node:path";
 import type { Address } from "viem";
 
@@ -109,7 +110,7 @@ export class UserStore {
     // Keep the previous version: users.json holds the only copy of every user's
     // encrypted keys, so a bad write must never be unrecoverable.
     if (existsSync(this.file)) copyFileSync(this.file, `${this.file}.bak`);
-    renameSync(tmp, this.file);
+    safeRename(tmp, this.file);
   }
 
   createInvite(by: number, ttlMs = 7 * 24 * 3600_000): string {
