@@ -22,6 +22,12 @@ export interface UserSettings {
   /** Where /collect sends minted NFTs. */
   vault?: Address;
   notify: boolean;
+  /** Mint radar finds automatically (off unless the user turns it on with /automint). */
+  autoMint?: boolean;
+  /** Skip a wallet whose worst-case gas for one auto-mint is above this many dollars. */
+  autoMintMaxGasUsd?: number;
+  /** Stop auto-minting for the day once this many dollars of gas has been paid. */
+  autoMintDailyUsd?: number;
   /** /plan inputs; unset values fall back to the operator defaults. */
   ethUsd?: number;
   feePct?: number;

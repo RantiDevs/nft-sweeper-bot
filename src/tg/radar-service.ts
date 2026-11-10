@@ -19,6 +19,8 @@ export interface RadarServiceOptions {
   platforms?: Platform[];
   rpcOverrides?: Record<number, string[]>;
   notify: (html: string) => void;
+  /** Called once for each collection that passes every check (used by auto-mint). */
+  onWorthy?: (h: Enriched) => void;
   usd?: (amount: number) => string;
 }
 
@@ -115,6 +117,11 @@ export class RadarService {
         if (this.told.has(key)) continue;
         this.told.add(key);
         this.o.notify(formatHit(h));
+        try {
+          this.o.onWorthy?.(h);
+        } catch (e) {
+          log("onWorthy failed:", errMsg(e));
+        }
       }
       return results;
     } finally {

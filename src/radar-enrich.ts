@@ -38,6 +38,8 @@ export interface Enriched extends RadarHit {
   slug?: string;
   floorNative?: number;
   floorUsd?: number;
+  /** Dollar price of one unit of the chain's native coin, when OpenSea reports it. */
+  nativeUsd?: number;
   owners?: number;
   sales24h?: number;
   verdict: Verdict;
@@ -144,6 +146,7 @@ export async function enrich(hit: RadarHit, rpc: Rpc, openseaKey: string | undef
     const [col, stats] = await Promise.all([osGet(openseaKey, `/collections/${out.slug}`), osGet(openseaKey, `/collections/${out.slug}/stats`)]);
     const usd = Number(col?.pricing_currencies?.listing_currency?.usd_price);
     const t = stats?.total;
+    if (usd > 0) out.nativeUsd = usd;
     if (t?.floor_price && usd) {
       out.floorNative = Number(t.floor_price);
       out.floorUsd = out.floorNative * usd;

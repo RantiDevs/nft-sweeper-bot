@@ -11,6 +11,7 @@ import { registerHandlers } from "./handlers.js";
 import { Hub } from "./hub.js";
 import { Notifier } from "./notify.js";
 import { RadarService } from "./radar-service.js";
+import { AutoMinter } from "./automint.js";
 import { UserStore } from "./store.js";
 
 async function main(): Promise<void> {
@@ -83,6 +84,7 @@ async function main(): Promise<void> {
   hubRef0 = hub;
   notifierRef = notifier;
   hub.loadAll();
+  const autoMinter = new AutoMinter({ hub, store, dataDir: tg.dataDir, notify: (id, t) => void notifier.send(id, t), quantity: Number(process.env.AUTOMINT_QTY ?? 1) });
   const radar =
     process.env.RADAR === "off"
       ? undefined
@@ -95,8 +97,9 @@ async function main(): Promise<void> {
           platforms: process.env.RADAR_PLATFORMS ? (process.env.RADAR_PLATFORMS.split(",").map((x) => x.trim()) as ("seadrop" | "thirdweb")[]) : undefined,
           rpcOverrides: { [tg.base.chainId]: tg.base.rpcUrls },
           notify: (t) => notifier.admins(t),
+          onWorthy: (h) => autoMinter.consider(h),
         });
-  registerHandlers(bot, { tg, hub, store, notifier, radar });
+  registerHandlers(bot, { tg, hub, store, notifier, radar, autoMinter });
 
   let stopping = false;
   const shutdown = async () => {
@@ -105,6 +108,7 @@ async function main(): Promise<void> {
     log("shutting down: waiting for in-flight mints (Ctrl-C again to force)");
     await bot.stop().catch(() => {});
     radar?.stop();
+    autoMinter.stop();
     await hub.stop();
     await notifier.flush();
     // Last save to Supabase, then let go of the run lock so the next copy can start at once.

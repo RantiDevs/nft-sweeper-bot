@@ -9,6 +9,7 @@ import type { TgConfig } from "./config.js";
 import type { Hub } from "./hub.js";
 import { chunk, esc, short, type Notifier } from "./notify.js";
 import type { RadarService } from "./radar-service.js";
+import { DEFAULT_DAILY_USD, DEFAULT_MAX_GAS_USD, type AutoMinter } from "./automint.js";
 import { executeBridge, planBridge, relayChains, spreadNative } from "../bridge.js";
 import { privateKeyToAccount } from "viem/accounts";
 import type { UserRecord, UserSettings, UserStore } from "./store.js";
@@ -19,6 +20,7 @@ export interface BotDeps {
   store: UserStore;
   notifier: Notifier;
   radar?: RadarService;
+  autoMinter?: AutoMinter;
 }
 
 interface Pending {
@@ -53,7 +55,7 @@ const HELP = [
   "/radar – free public mints worth a look right now (<code>/radar now</code> scans again)",
 ].join("\n");
 
-const ADMIN_HELP = "\n<b>Admin</b>\n/bridge <code>from to amount [spread] [yes]</code> – move the native coin between chains (quote only unless yes)\n/mintdrop <code>chain 0xNFT [yes]</code> – mint a free public SeaDrop stage on any chain (dry run unless yes)\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
+const ADMIN_HELP = "\n<b>Admin</b>\n/bridge <code>from to amount [spread] [yes]</code> – move the native coin between chains (quote only unless yes)\n/automint <code>on|off|gas $|daily $</code> – mint radar finds automatically (OFF by default; dollar limits)\n/mintdrop <code>chain 0xNFT [yes]</code> – mint a free public SeaDrop stage on any chain (dry run unless yes)\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
 
 function parseAddress(s: string | undefined): Address | undefined {
   return s && isAddress(s, { strict: false }) ? getAddress(s) : undefined;
@@ -69,7 +71,7 @@ function intIn(s: string, lo: number, hi: number): number | undefined {
 }
 
 export function registerHandlers(bot: Bot, d: BotDeps): void {
-  const { tg, hub, store, notifier, radar } = d;
+  const { tg, hub, store, notifier, radar, autoMinter } = d;
   const pending = new Map<number, Pending>();
   const lastSeen = new Map<number, number>();
 
@@ -244,6 +246,34 @@ export function registerHandlers(bot: Bot, d: BotDeps): void {
       } catch (e) {
         return say(ctx, `🛑 Bridge refused or failed: ${esc(errMsg(e).slice(0, 300))}`);
       }
+    },
+    { admin: true },
+  );
+
+  cmd(
+    "automint",
+    async (ctx, u, args) => {
+      const s = u.settings;
+      const gas = s.autoMintMaxGasUsd ?? DEFAULT_MAX_GAS_USD;
+      const daily = s.autoMintDailyUsd ?? DEFAULT_DAILY_USD;
+      const status = () =>
+        [
+          `🤖 Auto-mint: <b>${s.autoMint ? "ON" : "OFF"}</b>${s.autoMint ? (s.dryRun ? " (your mode is dry-run, so it only simulates; use /live for real mints)" : " · <b>LIVE: it will spend gas</b>") : ""}`,
+          `Per-mint gas ceiling: $${gas} · daily gas limit: $${daily}${autoMinter ? ` (used today: $${autoMinter.spentToday(u.id).toFixed(3)})` : ""}`,
+          "It mints only free, public, not-sold-out drops that the radar approved, once per collection, from all your wallets.",
+        ].join("\n");
+      const [a, v] = args;
+      if (!a || a === "status") return say(ctx, `${status()}\n\n<code>/automint on</code> · <code>/automint off</code> · <code>/automint gas 0.10</code> · <code>/automint daily 1</code>`);
+      if (a === "on" || a === "off") {
+        hub.update(u.id, { autoMint: a === "on" });
+        return say(ctx, status());
+      }
+      const n = Number(v);
+      if ((a === "gas" || a === "daily") && Number.isFinite(n) && n > 0 && n <= 100) {
+        hub.update(u.id, a === "gas" ? { autoMintMaxGasUsd: n } : { autoMintDailyUsd: n });
+        return say(ctx, status());
+      }
+      return say(ctx, "Usage: <code>/automint on|off|status</code>, <code>/automint gas 0.10</code> (dollars per mint), <code>/automint daily 1</code> (dollars per day).");
     },
     { admin: true },
   );
