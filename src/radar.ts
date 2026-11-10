@@ -26,12 +26,12 @@ export interface ChainSpec {
 export const DEFAULT_CHAINS: ChainSpec[] = [
   { name: "Ethereum", chainId: 1, symbol: "ETH", rpcs: ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com"] },
   { name: "Base", chainId: 8453, symbol: "ETH", rpcs: ["https://base-rpc.publicnode.com", "https://mainnet.base.org"] },
-  { name: "Arbitrum", chainId: 42161, symbol: "ETH", rpcs: ["https://arbitrum-one-rpc.publicnode.com", "https://arb1.arbitrum.io/rpc"] },
-  { name: "Optimism", chainId: 10, symbol: "ETH", rpcs: ["https://optimism-rpc.publicnode.com", "https://mainnet.optimism.io"] },
+  { name: "Arbitrum", chainId: 42161, symbol: "ETH", rpcs: ["https://arbitrum.drpc.org", "https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com"] },
+  { name: "Optimism", chainId: 10, symbol: "ETH", rpcs: ["https://optimism.drpc.org", "https://mainnet.optimism.io", "https://optimism-rpc.publicnode.com"] },
   { name: "Polygon", chainId: 137, symbol: "POL", rpcs: ["https://polygon-bor-rpc.publicnode.com", "https://polygon-rpc.com"] },
-  { name: "HyperEVM", chainId: 999, symbol: "HYPE", rpcs: ["https://rpc.hyperliquid.xyz/evm"] },
+  { name: "HyperEVM", chainId: 999, symbol: "HYPE", rpcs: ["https://rpc.hyperliquid.xyz/evm", "https://hyperliquid.drpc.org"] },
   { name: "Elysium", chainId: 99901, symbol: "HYPE", rpcs: ["https://rpc.elysium.kinetiq.xyz"] },
-  { name: "Robinhood Chain", chainId: 4663, symbol: "ETH", rpcs: [] },
+  { name: "Robinhood Chain", chainId: 4663, symbol: "ETH", rpcs: ["https://rpc.mainnet.chain.robinhood.com"] },
   { name: "Abstract", chainId: 2741, symbol: "ETH", rpcs: ["https://api.mainnet.abs.xyz"] },
   { name: "Ink", chainId: 57073, symbol: "ETH", rpcs: ["https://rpc-gel.inkonchain.com", "https://ink.drpc.org"] },
   { name: "Unichain", chainId: 130, symbol: "ETH", rpcs: ["https://mainnet.unichain.org"] },
@@ -43,10 +43,10 @@ export const DEFAULT_CHAINS: ChainSpec[] = [
   { name: "Monad", chainId: 143, symbol: "MON", rpcs: ["https://rpc.monad.xyz"] },
   { name: "MegaETH", chainId: 4326, symbol: "ETH", rpcs: ["https://mainnet.megaeth.com/rpc"] },
   { name: "Flow EVM", chainId: 747, symbol: "FLOW", rpcs: ["https://mainnet.evm.nodes.onflow.org"] },
-  { name: "BNB Chain", chainId: 56, symbol: "BNB", rpcs: ["https://bsc-dataseed.binance.org"] },
-  { name: "Avalanche", chainId: 43114, symbol: "AVAX", rpcs: ["https://api.avax.network/ext/bc/C/rpc"] },
+  { name: "BNB Chain", chainId: 56, symbol: "BNB", rpcs: ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.binance.org"] },
+  { name: "Avalanche", chainId: 43114, symbol: "AVAX", rpcs: ["https://avalanche-c-chain-rpc.publicnode.com", "https://api.avax.network/ext/bc/C/rpc"] },
   { name: "Zora", chainId: 7777777, symbol: "ETH", rpcs: ["https://rpc.zora.energy"] },
-  { name: "Blast", chainId: 81457, symbol: "ETH", rpcs: ["https://rpc.blast.io"] },
+  { name: "Blast", chainId: 81457, symbol: "ETH", rpcs: ["https://rpc.blast.io", "https://blast.drpc.org"] },
 ];
 
 export type Platform = "seadrop" | "thirdweb";
@@ -203,7 +203,12 @@ export function makeRpc(urls: string[], timeoutMs: number): Rpc {
         return j.result;
       } catch (e: any) {
         last = e;
-        if (e?.rpc) throw e; // the node answered: retrying elsewhere will not change a "range too large"
+        // The node answered with an error ("range too large", "archive requests need a token", ...). Another provider
+        // may allow it, so try the others once each; with a single URL there is nothing to try.
+        if (e?.rpc) {
+          if (i + 1 >= urls.length) throw e;
+          continue;
+        }
         await sleep(200 * (i + 1));
       }
     }

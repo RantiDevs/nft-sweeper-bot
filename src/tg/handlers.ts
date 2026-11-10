@@ -53,7 +53,7 @@ const HELP = [
   "/radar – free public mints worth a look right now (<code>/radar now</code> scans again)",
 ].join("\n");
 
-const ADMIN_HELP = "\n<b>Admin</b>\n/bridge <code>from to amount [spread] [yes]</code> – move the native coin between chains (quote only unless yes)\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
+const ADMIN_HELP = "\n<b>Admin</b>\n/bridge <code>from to amount [spread] [yes]</code> – move the native coin between chains (quote only unless yes)\n/mintdrop <code>chain 0xNFT [yes]</code> – mint a free public SeaDrop stage on any chain (dry run unless yes)\n/invite · /users · /ban <code>id</code> · /unban <code>id</code> · /stats · /broadcast <code>text</code>";
 
 function parseAddress(s: string | undefined): Address | undefined {
   return s && isAddress(s, { strict: false }) ? getAddress(s) : undefined;
@@ -243,6 +243,29 @@ export function registerHandlers(bot: Bot, d: BotDeps): void {
         return say(ctx, lines.join("\n"));
       } catch (e) {
         return say(ctx, `🛑 Bridge refused or failed: ${esc(errMsg(e).slice(0, 300))}`);
+      }
+    },
+    { admin: true },
+  );
+
+  cmd(
+    "mintdrop",
+    async (ctx, u, args) => {
+      const [chainS, nftS, ...rest] = args;
+      const nft = parseAddress(nftS);
+      if (!Number(chainS) || !nft) {
+        return say(ctx, "Usage: <code>/mintdrop 8453 0xCollection</code> mints a FREE public SeaDrop stage on that chain from all your wallets (each needs gas coin on that chain). Add <code>yes</code> to really send; without it you get a dry run.");
+      }
+      const keys = hub.exportKeys(u.id);
+      if (keys.length === 0) return say(ctx, "No wallets yet.");
+      const accounts = keys.map((k) => privateKeyToAccount(k.key as `0x${string}`));
+      try {
+        const { mintDrop } = await import("../mintdrop.js");
+        const r = await mintDrop({ chainId: Number(chainS), nft, accounts, execute: rest.includes("yes") });
+        const lines = r.results.map((x, i) => `w${String(i + 1).padStart(2, "0")} ${x.status}: ${esc(x.note.slice(0, 90))}`);
+        return sayLong(ctx, [`🎯 <b>${rest.includes("yes") ? "Mint" : "Dry run"}</b> ${short(nft)} on chain ${chainS}`, ...lines, "", esc(r.summary)].join("\n"));
+      } catch (e) {
+        return say(ctx, `🛑 ${esc(errMsg(e).slice(0, 300))}`);
       }
     },
     { admin: true },

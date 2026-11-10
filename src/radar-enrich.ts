@@ -153,6 +153,10 @@ export async function enrich(hit: RadarHit, rpc: Rpc, openseaKey: string | undef
     if (out.floorUsd === undefined) why.push("no floor price (nothing listed)");
     else if (out.floorUsd < crit.minFloorUsd) why.push(`floor under $${crit.minFloorUsd} ($${out.floorUsd.toFixed(2)})`);
     if ((out.owners ?? 0) > 0 && (out.owners ?? 0) < crit.minHolders) why.push(`only ${out.owners} holders`);
+    // Far more trades in a day than there are tokens (or holders) means the same tokens are swapped back and forth:
+    // the floor and volume are probably not real demand (wash trading, or pure flipping with no buyers left).
+    const supplyBasis = Number(out.minted ?? out.max ?? 0n);
+    if (out.sales24h !== undefined && supplyBasis >= 50 && out.sales24h > supplyBasis * 1.2) why.push(`${out.sales24h} sales in 24h on ${supplyBasis} tokens: likely wash trading`);
   }
 
   // 4. The window must still be open long enough to act.
